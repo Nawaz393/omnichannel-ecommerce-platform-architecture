@@ -1,0 +1,40 @@
+flowchart TB
+    subgraph APP_LAYER ["Next.js 16 Omnichannel Web Platform"]
+        RSC["React Server Components<br/>(Catalog Discovery, Brand/Category Tree)"]
+        SERVER_ACTIONS["Server Actions ('use server')<br/>(cart-action.ts, product.ts)"]
+        SAGA_ROUTE["Route Handler: /api/checkout<br/>(Distributed Saga Controller)"]
+        SERVICES["Domain Services<br/>(auth.ts, order.ts, user-addresses.ts)"]
+    end
+
+    subgraph DB_TIER ["Direct POS Database Persistence Tier"]
+        ACCELERATE["Prisma Accelerate<br/>(Managed Connection Pooler & Edge Cache)"]
+        POS_DB[("Core POS PostgreSQL Database<br/>(products, productvariants, carts, saledetail)")]
+    end
+
+    subgraph POS_API_TIER ["Direct In-House POS REST API"]
+        AXIOS_CLIENT["Axios POS Client (posApi)<br/>(Bearer Auth & Interceptors)"]
+        VOUCHER_API["/Voucher/order<br/>(Fiscal Order Creation & Stock Lock)"]
+        PAYMENT_API["/Voucher/order/{id}/payment<br/>(Credit Ledger Settlement)"]
+        CANCEL_API["DELETE /Voucher/order/{id}<br/>(Compensating Order Rollback)"]
+        CUSTOMER_API["/Customer & /CustomerAddress<br/>(Auth, Signup, Address Book)"]
+    end
+
+    subgraph PAYMENT_GW ["Payment Processing Gateway"]
+        AUTHNET_SDK["Authorize.Net Native SDK<br/>(Auth-Only, Capture, Compensating Void)"]
+    end
+
+    RSC -->|"Direct Query via Prisma"| ACCELERATE
+    SERVER_ACTIONS -->|"ACID Cart & Stock Tx"| ACCELERATE
+    ACCELERATE -->|"Multiplexed TCP Pool"| POS_DB
+
+    SAGA_ROUTE -->|"Revalidate Cart & Stock"| ACCELERATE
+    SAGA_ROUTE -->|"Phase 1 Auth / Phase 2 Capture"| AUTHNET_SDK
+    SAGA_ROUTE -->|"Step 2: Place Voucher Order"| AXIOS_CLIENT
+    SAGA_ROUTE -->|"Step 4: Settle Ledger"| AXIOS_CLIENT
+
+    SERVICES -->|"User Auth & Address Book"| AXIOS_CLIENT
+
+    AXIOS_CLIENT --> VOUCHER_API
+    AXIOS_CLIENT --> PAYMENT_API
+    AXIOS_CLIENT --> CANCEL_API
+    AXIOS_CLIENT --> CUSTOMER_API

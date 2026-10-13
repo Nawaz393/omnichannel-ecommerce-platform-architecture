@@ -2,7 +2,7 @@
 
 [← Main README](../README.md) · [← Documentation Index](README.md)
 
-This document contains representative, production-grade code implementations extracted directly from the **Engel E-Commerce Platform** codebase (`engel-web-app` and `engels_lambda`).
+This document contains representative, production-grade code implementations extracted directly from the **Enterprise Omnichannel E-Commerce Platform** codebase.
 
 ---
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(authResult, { status: 400 });
     }
 
-    // Step 2: Create external physical store voucher order in ForeverPOS
+    // Step 2: Create physical store voucher order in In-House POS
     const orderApiRes = await insertOrderThroughApi(orderPayload, authHeader);
     if (!orderApiRes?.voucherId) {
       // Compensating Transaction: Void the card hold immediately
@@ -547,79 +547,80 @@ export const getPopularProducts = async ({ page = 1, pageSize = 10, categoryId =
 
 ---
 
-## 6. AWS Lambda Catalog Sync Handler (`engels_lambda`)
+## 6. Direct In-House POS REST API Integration Service
 
-**Source Package**: `engels_lambda`  
-**Pattern**: Lightweight Serverless ETL Handler with PostgreSQL Connection Pooling.
+**Source Files**: `src/app/api/checkout/lib/pos.ts` and `src/lib/axiosInstance.ts`  
+**Pattern**: Direct HTTP API Client with Request Interceptors, Token Injection, and Compensating Actions.
 
 ```typescript
-import { SQSEvent, SQSBatchResponse } from 'aws-lambda';
-import { Pool } from 'pg';
+// src/lib/axiosInstance.ts - Dedicated In-House POS Axios Instance
+import axios, { AxiosError } from 'axios';
 
-// Retain connection pool across Lambda invocations in warm containers
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 5,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+export const posApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_POS_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
 });
 
-interface CatalogDeltaItem {
-  productId: number;
-  variantId?: number;
-  sku: string;
-  name: string;
-  rate: number;
-  stockQuantity: number;
-  companyId: number;
-  updatedAt: string;
-}
+// Request Interceptor: Injects Authorization Bearer Token
+posApi.interceptors.request.use(
+  async (config) => {
+    if (typeof window === 'undefined') return config;
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
 
-export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
-  const batchItemFailures: { itemIdentifier: string }[] = [];
-  const client = await pool.connect();
+// src/app/api/checkout/lib/pos.ts - Direct POS Integration Functions
+import { posApi } from '@/lib';
+import type { Order } from './types';
+
+export const insertOrderThroughApi = async (order: Order, authHeader: string) => {
+  const res = await posApi.post('/Voucher/order', order, {
+    headers: { Authorization: authHeader },
+  });
+  return res.data;
+};
+
+export const updatePaymentStatus = async (id: string, total: number, authHeader: string) => {
+  const updatePaymentPayload = {
+    cash: 0,
+    credit: total,
+    zilla: 0,
+    otherPayment: 0,
+    shippingAmount: 0,
+    sendEmail: true,
+  };
 
   try {
-    for (const record of event.Records) {
-      try {
-        const item: CatalogDeltaItem = JSON.parse(record.body);
-
-        await client.query('BEGIN');
-
-        // Upsert product master record
-        await client.query(
-          `INSERT INTO products (productid, productname, rate, companyid, updateddate)
-           VALUES ($1, $2, $3, $4, NOW())
-           ON CONFLICT (productid) 
-           DO UPDATE SET productname = EXCLUDED.productname, rate = EXCLUDED.rate, updateddate = NOW()`,
-          [item.productId, item.name, item.rate, item.companyId]
-        );
-
-        // Upsert variant inventory level if variantId is provided
-        if (item.variantId) {
-          await client.query(
-            `INSERT INTO productvariants (variantid, productid, sku, price, stockquantity)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (variantid) 
-             DO UPDATE SET price = EXCLUDED.price, stockquantity = EXCLUDED.stockquantity`,
-            [item.variantId, item.productId, item.sku, item.rate, item.stockQuantity]
-          );
-        }
-
-        await client.query('COMMIT');
-      } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('Failed to process message ID:', record.messageId, err);
-        // Report partial batch failure so SQS re-drives only failed messages
-        batchItemFailures.push({ itemIdentifier: record.messageId });
-      }
-    }
-  } finally {
-    client.release();
+    const res = await posApi.put(`/Voucher/order/${id}/payment`, updatePaymentPayload, {
+      headers: { Authorization: authHeader },
+    });
+    return { success: [200, 201, 202, 204].includes(res.status) };
+  } catch (error) {
+    console.error('Error updating payment status:', error);
+    return { success: false };
   }
+};
 
-  return { batchItemFailures };
+export const cancelPosOrder = async (id: string, authHeader: string) => {
+  try {
+    await posApi.delete(`/Voucher/order/${id}`, {
+      headers: { Authorization: authHeader },
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to cancel POS order', error);
+    return { success: false };
+  }
 };
 ```
 
-Related Guides: [Payment Saga Deep Dive](payment-saga-and-fault-tolerance.md) · [Prisma Architecture](prisma-database-architecture.md) · [Serverless Lambdas](serverless-infrastructure-and-lambdas.md)
+Related Guides: [Payment Saga Deep Dive](payment-saga-and-fault-tolerance.md) · [Prisma Architecture](prisma-database-architecture.md) · [POS Direct Integration](pos-api-and-direct-database-integration.md)

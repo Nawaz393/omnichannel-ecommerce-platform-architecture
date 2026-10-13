@@ -1,14 +1,14 @@
-# Prisma Database Architecture & AWS RDS Optimization
+# Prisma Database Architecture & PostgreSQL Optimization
 
 [← Main README](../README.md) · [← Documentation Index](README.md)
 
-This document details the database architecture of **Engel E-Commerce**, covering **Prisma ORM 6.13**, AWS RDS PostgreSQL clustered persistence, connection pooling with `@prisma/extension-accelerate`, and multi-tier pricing relations.
+This document details the database architecture of the **Enterprise Omnichannel E-Commerce Platform**, covering **Prisma ORM 6.13**, Core POS PostgreSQL persistence, connection pooling with `@prisma/extension-accelerate`, and multi-tier pricing relations.
 
 ---
 
 ## 1. The Serverless Connection Exhaustion Problem
 
-Next.js deployed to Vercel operates as ephemeral serverless lambdas. Under traffic spikes, hundreds of concurrent lambda executions spin up. If each lambda establishes direct connections to AWS RDS PostgreSQL, the database connection limit (`max_connections`) is rapidly exhausted, producing fatal `FATAL: remaining connection slots are reserved for non-replication superuser connections` errors.
+Next.js deployed to serverless infrastructure scales horizontally across ephemeral function instances. Under traffic spikes, hundreds of concurrent function executions spin up. If each function instance establishes direct connections to the PostgreSQL database, the connection limit (`max_connections`) is rapidly exhausted, producing fatal `FATAL: remaining connection slots are reserved for non-replication superuser connections` errors.
 
 To solve this, the platform routes all database traffic through **Prisma Accelerate**:
 
@@ -94,6 +94,6 @@ export async function getCachedCatalogCategories() {
 }
 ```
 
-Transactional mutations (e.g., checkout and order creation) bypass edge caches and execute with direct transactional guarantees against AWS RDS.
+Transactional mutations (e.g., checkout and order creation) bypass edge caches and execute with direct transactional guarantees against the primary POS database.
 
-Related: [Payment Saga](payment-saga-and-fault-tolerance.md) · [Serverless Lambdas](serverless-infrastructure-and-lambdas.md) · [Code Examples](code-examples.md)
+Related: [Payment Saga](payment-saga-and-fault-tolerance.md) · [POS Direct Integration](pos-api-and-direct-database-integration.md) · [Code Examples](code-examples.md)

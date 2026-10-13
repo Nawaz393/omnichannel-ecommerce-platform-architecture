@@ -2,7 +2,7 @@
 
 [← Main README](../README.md) · [← Documentation Index](README.md)
 
-This document outlines the domain boundaries, bounded contexts, entity ownership, and interaction models of the **Engel E-Commerce Platform**.
+This document outlines the domain boundaries, bounded contexts, entity ownership, and interaction models of the **Enterprise Omnichannel E-Commerce Platform**.
 
 ---
 
@@ -19,9 +19,9 @@ flowchart TD
         PAYMENT["4. Payment Saga Domain<br/>(Authorize.Net, Compensating Voids)"]
     end
 
-    subgraph EnterpriseExtension ["Enterprise B2B & Operations"]
+    subgraph EnterpriseExtension ["Enterprise B2B & POS Integration"]
         B2B["5. B2B Quotation Domain<br/>(Quotes, Permits, Term Negotiations)"]
-        ETL["6. Serverless ETL Domain<br/>(engels_lambda, Delta Sync)"]
+        POS_INT["6. In-House POS Direct Integration Domain<br/>(Prisma DB Queries, REST posApi)"]
     end
 
     CATALOG -->|"Rates & VAT Rules"| CART
@@ -30,8 +30,8 @@ flowchart TD
     PAYMENT -->|"Settlement Callback"| ORDER
     CATALOG -->|"Item Pricing & Stock"| B2B
     B2B -->|"Approved Quote Conversion"| ORDER
-    ETL -->|"Batch Updates Stock & Rates"| CATALOG
-    ORDER -->|"External ERP Sync"| ETL
+    POS_INT -->|"Direct Catalog & Stock Queries"| CATALOG
+    ORDER -->|"Direct Voucher & Payment Sync"| POS_INT
 ```
 
 ---
@@ -48,7 +48,7 @@ flowchart TD
 - **Invariants & Rules**:
   - A product variant must belong to an active product.
   - VAT rates must be normalized to percentage evaluations ($\text{unitPrice} \times \text{qty} \times \frac{\text{vat}}{100}$).
-  - Stock updates must not drop below zero unless backorders are explicitly permitted by `inventorysettings`.
+  - Stock updates must not drop below zero unless backorders are explicitly permitted.
 
 ### 2.2 Cart & Session Domain
 - **Prisma Schema Models**: `carts`, `cartitems`.
@@ -65,7 +65,7 @@ flowchart TD
 - **Prisma Schema Models**: `sales`, `saledetail`, `voucher`, `voucherdetail`, `customeraddress`.
 - **Primary Responsibilities**:
   - Translates digital shopping carts into durable e-commerce sales records (`sales`).
-  - Generates external ERP voucher orders in ForeverPOS (`/Voucher/order`).
+  - Generates external ERP voucher orders in In-House POS (`/Voucher/order`).
   - Manages delivery vs. store pickup routing (`orderType`).
   - Tracks line item totals, discounts, shipping fees, and tax breakdowns.
 - **Invariants & Rules**:
@@ -94,27 +94,26 @@ flowchart TD
   - Expired quotations cannot be converted into orders without commercial re-approval.
   - Quotes require commercial customer verification and permit validation (`customerpermits`).
 
-### 2.6 Serverless ETL & Sync Domain
-- **Infrastructure Components**: AWS Lambda (`engels_lambda`), Amazon EventBridge, Amazon SQS FIFO, Amazon S3.
+### 2.6 In-House POS Direct Integration Domain
+- **Infrastructure Components**: Direct PostgreSQL Connection via Prisma ORM 6.13, Prisma Accelerate Connection Pooler, Axios `posApi` Client.
 - **Primary Responsibilities**:
-  - Pulls catalog, inventory, and pricing deltas from physical store POS databases.
-  - Performs idempotent batch upserts into AWS RDS PostgreSQL using lightweight `pg-pool` connections.
-  - Emits cache invalidation signals to Prisma Accelerate.
-- **Invariants & Rules**:
-  - Ingestion jobs must be strictly idempotent to avoid duplicate stock adjustments on retries.
-  - Unrecoverable payload errors route to SQS Dead Letter Queues (DLQ) after 3 attempts.
+  - Queries catalog taxonomy, variants, stock quantities, and historical sales rankings directly from the Core POS database.
+  - Synchronizes orders with the In-House POS via `/Voucher/order`.
+  - Settles store credit ledgers via `/Voucher/order/{id}/payment`.
+  - Executes compensating order deletions via `DELETE /Voucher/order/{id}`.
+  - Synchronizes customer authentication and address registries.
 
 ---
 
-## 3. State Ownership & Consistency Matrix
+## 3. Context Map & Ubiquitous Language
 
-| Domain | Master Record of Truth | Consistency Model | Communication Pattern |
+| Context | Master Data Store | Consistency Model | Communication Protocol |
 |---|---|---|---|
-| **Catalog** | AWS RDS (`products`, `productvariants`) | Eventual (via ETL sync) | Next.js Server Components / RSC |
-| **Cart** | AWS RDS (`carts`, `cartitems`) | Immediate ACID | Next.js Server Actions (`$transaction`) |
-| **Orders** | ForeverPOS ERP + AWS RDS (`sales`) | Dual-System Consensus | Distributed 2-Phase Saga |
-| **Payments** | Authorize.Net Gateway | Immediate Strong | Synchronous Route Handler (`/api/checkout`) |
-| **B2B Quotes** | AWS RDS (`quote`, `quotedetail`) | Immediate ACID | Next.js Server Actions / POS API |
-| **Media** | Amazon S3 (`forever-pos-bucket`) | High Availability Object | CDN URL resolution in Next.js Image |
+| **Catalog** | Core POS PostgreSQL (`products`) | Strong Consistency | Prisma ORM via Accelerate |
+| **Cart** | Core POS PostgreSQL (`carts`) | Read-after-Write Consistency | Server Actions (`prisma.$transaction`) |
+| **Orders** | In-House POS ERP + PostgreSQL | Dual-System Consensus | Distributed 2-Phase Saga |
+| **Payments** | Authorize.Net | External Finality | REST API (Native SDK) |
+| **B2B Quotes**| Core POS PostgreSQL (`quote`) | Eventual Consistency | Server Actions / Prisma ORM |
+| **POS Sync** | Core POS PostgreSQL + POS API | Immediate Consensus | Direct Prisma Queries + REST `posApi` |
 
-Related Guides: [Architecture](architecture.md) · [Code Examples](code-examples.md) · [Payment Saga Deep Dive](payment-saga-and-fault-tolerance.md)
+Related Guides: [System Architecture](architecture.md) · [Payment Saga Deep Dive](payment-saga-and-fault-tolerance.md) · [POS Direct Integration](pos-api-and-direct-database-integration.md)

@@ -10,7 +10,7 @@
 
 ## Context
 
-The Engel E-Commerce platform requires a digital storefront capable of sub-second product discovery, high search engine visibility (SEO) across deep catalog hierarchies, and seamless omnichannel cart interactions. Traditional single-page applications (SPAs) ship extensive client-side JavaScript bundles, causing slow First Contentful Paint (FCP) and Largest Contentful Paint (LCP) times on mobile devices. 
+The omnichannel e-commerce platform requires a digital storefront capable of sub-second product discovery, high search engine visibility (SEO) across deep catalog hierarchies, and seamless omnichannel cart interactions. Traditional single-page applications (SPAs) ship extensive client-side JavaScript bundles, causing slow First Contentful Paint (FCP) and Largest Contentful Paint (LCP) times on mobile devices. 
 
 Furthermore, data mutations such as cart item adjustments and guest-to-customer account migrations require direct database access, session cookies, and inventory validation. In a decoupled SPA architecture, every user action requires round-trip network hops through dedicated REST endpoints, exposing API surfaces and duplicating schema types across client and server.
 
@@ -34,7 +34,7 @@ We chose **Next.js 16.1.1 (App Router)** combined with **React 19.1.0** and **Ty
 
 ### Negative / Operational Challenges
 - **Serialization Boundaries**: Props passed from Server Components to Client Components must be serializable JSON. Decimal objects from Prisma must be explicitly converted to numbers or strings before transmission.
-- **Serverless Cold Starts**: Next.js App Router Lambdas on Vercel require optimized dependency trees to maintain p95 response latencies below 300ms.
+- **Serverless Cold Starts**: Next.js App Router serverless instances require optimized dependency trees to maintain p95 response latencies below 300ms.
 
 ## Trade-offs
 

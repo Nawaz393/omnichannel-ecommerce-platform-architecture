@@ -10,7 +10,7 @@
 
 ## Context
 
-The Engel E-Commerce backend runs on Vercel's serverless infrastructure, connecting to an **AWS RDS PostgreSQL** instance (`foreverpos`, hosted in Stockholm `eu-north-1`). 
+The omnichannel e-commerce backend runs on serverless infrastructure, connecting to an enterprise PostgreSQL database instance. 
 
 In a traditional stateful application, a single Node.js process maintains a long-lived database connection pool (e.g., 10 to 20 connections). However, serverless functions scale horizontally by instantiating independent runtime containers per concurrent request. If 250 shoppers simultaneously hit checkout routes, search catalog pages, and add items to carts, 250 distinct serverless instances attempt to establish direct TCP connections to PostgreSQL.
 

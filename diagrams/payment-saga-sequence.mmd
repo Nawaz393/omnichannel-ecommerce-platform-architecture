@@ -3,44 +3,56 @@ sequenceDiagram
     actor Customer as B2B / Retail Customer
     participant Client as React 19 Client UI
     participant AcceptJS as Authorize.Net Accept.js
-    participant ServerAction as Next.js Server Action / API
-    participant Prisma as Prisma Accelerate + AWS RDS
+    participant ServerAction as Next.js API (/api/checkout)
+    participant Prisma as Core POS DB (Prisma Accelerate)
     participant AuthNet as Authorize.Net Gateway
-    participant ForeverPOS as ForeverPOS API (Back-Office)
+    participant HomePOS as In-House POS REST API
 
     Customer->>Client: Submit Card Details (PAN, CVV, Exp)
     Client->>AcceptJS: dispatchData(secureData)
     AcceptJS-->>Client: opaqueData (nonce: tokenValue)
     Note over Client,AcceptJS: PCI-DSS Zero-Card-Data Exposure on Server
 
-    Client->>ServerAction: POST /api/checkout (opaqueData, cartItems, billing)
-    ServerAction->>Prisma: Begin Transaction: Validate & Lock Stock
-    Prisma-->>ServerAction: Current Stock Validated
-    ServerAction->>ServerAction: Calculate Order Total & VAT (Decimals)
+    Client->>ServerAction: POST /api/checkout (opaqueData, amount)
+    ServerAction->>Prisma: Revalidate Cart Total & Line VAT (computeCart)
+    Prisma-->>ServerAction: Current Stock & Total Validated
+    ServerAction->>ServerAction: Enforce Anti-Tampering (|clientAmount - expectedAmount| <= 0.01)
 
-    ServerAction->>AuthNet: Phase 1: createTransactionRequest (AUTH_ONLY)
+    ServerAction->>AuthNet: Step 1: createTransactionRequest (AUTHONLYTRANSACTION)
     alt Gateway Declined / Network Failure
-        AuthNet-->>ServerAction: 400 Error (Declined / Error Code)
-        ServerAction->>Prisma: Rollback Local Transaction & Release Locks
-        ServerAction-->>Client: Payment Failed Error Message
+        AuthNet-->>ServerAction: 400 Error (Declined)
+        ServerAction-->>Client: Payment Authorization Failed
     else Authorization Approved (transId granted)
         AuthNet-->>ServerAction: 200 OK: transId, authCode
-        ServerAction->>Prisma: Insert Order (status='pending_settlement', transId)
-        ServerAction->>Prisma: Insert OrderItems (Variant Snapshots)
-        ServerAction->>Prisma: Commit Local Order Transaction
 
-        ServerAction->>ForeverPOS: Sync Order to ERP (ForeverPOS)
-        alt ForeverPOS Sync Fails / Internal Error
-            ForeverPOS-->>ServerAction: Error 500 / Network Timeout
+        ServerAction->>HomePOS: Step 2: POST /Voucher/order (insertOrderThroughApi)
+        alt POS Voucher Creation Fails / Timeout
+            HomePOS-->>ServerAction: Error 500 / Timeout
             ServerAction->>AuthNet: Compensating Void: voidTransactionRequest(transId)
-            AuthNet-->>ServerAction: Void Acknowledged
-            ServerAction->>Prisma: Update Order status='voided_unrecoverable'
-            ServerAction-->>Client: Checkout Rollback Error
-        else ForeverPOS Sync Succeeds
-            ForeverPOS-->>ServerAction: 200 OK (voucherId generated)
-            ServerAction->>AuthNet: Phase 2: prioritizeCaptureRequest (PRIOR_AUTH_CAPTURE)
-            AuthNet-->>ServerAction: Capture Settled
-            ServerAction->>Prisma: Update Order status='completed'
-            ServerAction-->>Client: 200 OK (Redirect to /order/confirmed)
+            AuthNet-->>ServerAction: Void Confirmed (Funds Released)
+            ServerAction-->>Client: 500 Error (POS Unavailable, Card Released)
+        else POS Voucher Succeeds
+            HomePOS-->>ServerAction: 200 OK (voucherId generated)
+
+            ServerAction->>AuthNet: Step 3: PRIORAUTHCAPTURETRANSACTION(transId)
+            alt Card Capture Declined / Network Error
+                AuthNet-->>ServerAction: Capture Error
+                ServerAction->>HomePOS: Compensating Rollback: DELETE /Voucher/order/{id}
+                ServerAction->>AuthNet: Compensating Void: voidTransactionRequest(transId)
+                ServerAction-->>Client: 502 Error (Capture Failed, Order Cancelled)
+            else Capture Confirmed
+                AuthNet-->>ServerAction: 200 OK (Capture Settled)
+
+                ServerAction->>HomePOS: Step 4: PUT /Voucher/order/{id}/payment (updatePaymentStatus)
+                alt POS Payment Ledger Update Fails
+                    HomePOS-->>ServerAction: Ledger Error
+                    ServerAction->>AuthNet: Compensating Void: voidTransactionRequest(captureTransId)
+                    ServerAction->>HomePOS: Compensating Rollback: DELETE /Voucher/order/{id}
+                    ServerAction-->>Client: 500 Error (Ledger Failure, Transaction Reversed)
+                else Ledger Settled
+                    HomePOS-->>ServerAction: 200 OK (Settled)
+                    ServerAction-->>Client: 200 OK (Order Confirmed, Receipt Generated)
+                end
+            end
         end
     end

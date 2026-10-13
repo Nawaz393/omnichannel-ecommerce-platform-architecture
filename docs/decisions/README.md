@@ -2,7 +2,7 @@
 
 [← Main README](../../README.md) · [← Documentation Index](../README.md)
 
-This directory documents the core architectural decisions made for the Engel E-Commerce Platform. Each record captures the business and technical context, architectural choices, consequences, trade-offs, and alternative approaches evaluated.
+This directory documents the core architectural decisions made for the Enterprise Omnichannel Retail E-Commerce Platform. Each record captures the business and technical context, architectural choices, consequences, trade-offs, and alternative approaches evaluated.
 
 | ADR | Title | Status | Scope |
 |---|---|---|---|

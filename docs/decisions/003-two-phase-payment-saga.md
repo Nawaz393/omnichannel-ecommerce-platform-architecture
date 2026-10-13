@@ -12,8 +12,8 @@
 
 In an enterprise omnichannel retail environment, placing a digital order spans three independent, decoupled distributed systems:
 1. **The Payment Gateway (Authorize.Net)**: Charges or reserves customer credit card funds.
-2. **The Cloud E-Commerce Database (AWS RDS PostgreSQL / Prisma)**: Manages customer profiles, persistent shopping carts, and web order history.
-3. **The Physical Store POS & ERP System (`ForeverPOS / SAK Retail Solutions`)**: Manages real-world physical warehouse inventory, fiscal vouchers, and store accounting ledgers.
+2. **The Cloud E-Commerce Database (PostgreSQL / Prisma)**: Manages customer profiles, persistent shopping carts, and web order history.
+3. **The Physical Store In-House POS ERP System**: Manages real-world physical warehouse inventory, fiscal vouchers, and store accounting ledgers.
 
 ### The Single-Step Failure Mode
 A naive checkout flow executes a single-step immediate capture (`AUTH_CAPTURE`) at Authorize.Net, followed by calling the external POS API to create the store voucher. If the external POS API is temporarily unavailable, returns a 504 gateway timeout, or fails due to network partitions, the customer's card is billed immediately, but the warehouse never receives the fulfillment order. 
@@ -35,18 +35,18 @@ We engineered a **Distributed Two-Phase Commit Saga with Automated Compensating 
         │
         ├────────────────────> [FAIL] ──> Abort checkout (No card funds held)
         ▼ [OK]
-3. External POS Voucher  ───> ForeverPOS: POST /Voucher/order
+3. External POS Voucher  ───> In-House POS: POST /Voucher/order
         │
         ├────────────────────> [FAIL] ──> COMPENSATING VOID: Authorize.Net VOIDTRANSACTION
         ▼ [OK]                            (Instant fund release, Return 500)
 4. Phase 2 (Capture)     ───> Authorize.Net: PRIORAUTHCAPTURETRANSACTION
         │
-        ├────────────────────> [FAIL] ──> COMPENSATING ROLLBACK: ForeverPOS DELETE /order
+        ├────────────────────> [FAIL] ──> COMPENSATING ROLLBACK: POS DELETE /Voucher/order
         ▼ [OK]                            & Authorize.Net VOIDTRANSACTION (Return 502)
-5. POS Ledger Settle     ───> ForeverPOS: PUT /Voucher/order/{id}/payment (Credit Ledger)
+5. POS Ledger Settle     ───> In-House POS: PUT /Voucher/order/{id}/payment (Credit Ledger)
         │
         ├────────────────────> [FAIL] ──> COMPENSATING VOID: Authorize.Net VOIDTRANSACTION
-        ▼ [OK]                            & ForeverPOS DELETE /order (Return 500)
+        ▼ [OK]                            & POS DELETE /Voucher/order (Return 500)
 [Order Confirmed]
 ```
 

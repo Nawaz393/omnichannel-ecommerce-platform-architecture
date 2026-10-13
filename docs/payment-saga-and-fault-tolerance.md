@@ -2,7 +2,7 @@
 
 [← Main README](../README.md) · [← Documentation Index](README.md)
 
-This technical deep dive explores the distributed transaction architecture, fault tolerance mechanisms, and payment security boundaries engineered for the **Engel E-Commerce Platform**.
+This technical deep dive explores the distributed transaction architecture, fault tolerance mechanisms, and payment security boundaries engineered for the **Enterprise Omnichannel E-Commerce Platform**.
 
 ---
 
@@ -11,8 +11,8 @@ This technical deep dive explores the distributed transaction architecture, faul
 In a pure e-commerce platform, an order typically touches only the local database and a payment gateway. In an enterprise omnichannel retail architecture, however, every online purchase must reconcile across three independent distributed systems:
 
 1. **Authorize.Net Payment Gateway**: Manages credit card tokenization, authorization holds, fund settlement, and chargeback prevention.
-2. **AWS RDS PostgreSQL (Prisma ORM)**: Manages web customer accounts, active shopping carts, and digital checkout logs.
-3. **ForeverPOS / SAK Retail Solutions**: The brick-and-mortar retail ERP responsible for store inventory decrements, physical warehouse picking slips, and fiscal accounting receipts.
+2. **Core POS PostgreSQL Database (Prisma ORM)**: Manages web customer accounts, active shopping carts, and digital checkout logs.
+3. **In-House POS ERP System**: The brick-and-mortar retail system responsible for store inventory decrements, physical warehouse picking slips, and fiscal accounting receipts.
 
 Because these external systems communicate over public HTTP networks and do not support XA/2PC (Two-Phase Commit) distributed database protocols, traditional ACID transactions cannot span across them. 
 
@@ -34,9 +34,9 @@ sequenceDiagram
     actor Customer as Shopper / Browser
     participant AcceptJs as Authorize.Net Accept.js
     participant API as Next.js API (/api/checkout)
-    participant Prisma as AWS RDS (Prisma ORM)
+    participant Prisma as Core POS DB (Prisma ORM)
     participant AuthNet as Authorize.Net Gateway
-    participant POS as ForeverPOS API (/Voucher/order)
+    participant POS as In-House POS API (/Voucher/order)
 
     Customer->>AcceptJs: Input Card Details (Number, Exp, CVV)
     AcceptJs-->>Customer: Return Opaque Data Nonce (dataDescriptor, dataValue)
@@ -121,7 +121,7 @@ The server executes an authorization hold request via Authorize.Net:
 - **Safe State**: If the system terminates here, the authorization hold naturally expires, or can be released instantaneously via a void.
 
 ### 3.3 Physical Store Order Reservation (`/Voucher/order`)
-With funds guaranteed, the controller calls ForeverPOS (`POST /Voucher/order`) to:
+With funds guaranteed, the controller calls the In-House POS (`POST /Voucher/order`) to:
 - Generate a unique fiscal `voucherId`.
 - Reserve physical stock in the assigned fulfillment warehouse (`wareHouseId: 1`).
 - Create customer fulfillment delivery/pickup tracking metadata.
@@ -152,7 +152,7 @@ Finally, the controller settles the external POS accounting ledger:
 
 ## 5. Security & PCI-DSS SAQ-A Boundary
 
-The Engel E-Commerce architecture satisfies **PCI-DSS SAQ-A** compliance:
+The platform architecture satisfies **PCI-DSS SAQ-A** compliance:
 
 1. **Client-Side Tokenization**: Cardholder data (PAN, CVV, expiration date) is entered into form fields managed by Authorize.Net's `Accept.js` library.
 2. **Zero Plaintext Card Storage**: Card data is transmitted over TLS directly from the shopper's browser to Authorize.Net. The browser receives an ephemeral `opaqueData` token (`dataDescriptor: "COMMON.ACCEPT.INAPP.PAYMENT"`, `dataValue: "ey..."`).
@@ -165,4 +165,4 @@ The Engel E-Commerce architecture satisfies **PCI-DSS SAQ-A** compliance:
      : 'https://jstest.authorize.net/v1/Accept.js';
    ```
 
-Related Guides: [System Architecture](architecture.md) · [Code Examples](code-examples.md) · [ADR 003](decisions/003-two-phase-payment-saga.md)
+Related Guides: [System Architecture](architecture.md) · [Code Examples](code-examples.md) · [ADR 003](decisions/003-two-phase-payment-saga.md) · [POS Direct Integration](pos-api-and-direct-database-integration.md)

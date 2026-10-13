@@ -6,23 +6,22 @@ flowchart TB
         GOOGLE_AUTH["Google Identity Services<br/>(GSI OAuth)"]
     end
 
-    subgraph VERCEL_EDGE ["Vercel Serverless Edge Platform"]
-        APP_ROUTER["Next.js 16 App Router"]
+    subgraph APP_SERVER ["Web Application Platform (Next.js 16 App Router)"]
+        APP_ROUTER["Next.js App Router Architecture"]
         SERVER_ACTIONS["Server Actions ('use server')<br/>(Cart Mutations & Popularity Aggregation)"]
         CHECKOUT_ROUTE["Route Handler: /api/checkout<br/>(Distributed Saga Controller)"]
+        DOMAIN_SERVICES["Domain API Services<br/>(Auth, User Profile, Addresses)"]
     end
 
-    subgraph AWS_CLOUD ["AWS Cloud Infrastructure (eu-north-1 Stockholm)"]
+    subgraph DATA_TIER ["Direct POS Database Persistence Tier"]
         PRISMA_ACCEL["Prisma Accelerate<br/>(Connection Pooling & Edge Caching)"]
-        RDS_PG[("AWS RDS PostgreSQL<br/>(foreverpos Relational Database)")]
-        S3_BUCKET[("Amazon S3 Bucket<br/>(forever-pos-bucket Media Assets)")]
-        LAMBDA_WORKER["AWS Lambda Microservice<br/>(engels_lambda Catalog Sync)"]
-        EVENTBRIDGE["Amazon EventBridge<br/>(Scheduled Sync Triggers)"]
+        POS_DB[("Core POS PostgreSQL Database<br/>(Catalog, Variants, Carts, Orders)")]
+        S3_BUCKET[("Amazon S3 Bucket<br/>(Catalog Media & Product Assets)")]
     end
 
-    subgraph EXTERNAL_SERVICES ["External Enterprise Gateways"]
+    subgraph EXTERNAL_SERVICES ["External Enterprise Gateways & POS API"]
         AUTH_NET["Authorize.Net Gateway<br/>(Auth-Only, Capture, Void APIs)"]
-        FOREVER_POS["ForeverPOS API (SAK Retail)<br/>(/Voucher/order, /payment Ledger)"]
+        HOME_POS_API["In-House POS REST API<br/>(/Voucher/order, /payment Ledger, /Customer)"]
     end
 
     BROWSER -->|"Local Cart Operations"| ZUSTAND
@@ -33,13 +32,10 @@ flowchart TB
     BROWSER -->|"POST Nonce + Payload"| CHECKOUT_ROUTE
 
     APP_ROUTER -->|"Serve Optimized Images"| S3_BUCKET
-    SERVER_ACTIONS -->|"ACID Cart Transactions"| PRISMA_ACCEL
+    SERVER_ACTIONS -->|"ACID Cart Transactions & Stock Checks"| PRISMA_ACCEL
     CHECKOUT_ROUTE -->|"Cart & VAT Revalidation"| PRISMA_ACCEL
-    PRISMA_ACCEL -->|"Low-Latency TCP Connection Pool"| RDS_PG
+    PRISMA_ACCEL -->|"Low-Latency TCP Connection Pool"| POS_DB
 
     CHECKOUT_ROUTE -->|"1. Auth-Only / 3. Capture / Comp Void"| AUTH_NET
-    CHECKOUT_ROUTE -->|"2. Create Voucher / 4. Settle Ledger"| FOREVER_POS
-
-    EVENTBRIDGE -->|"Scheduled Ingestion Trigger"| LAMBDA_WORKER
-    LAMBDA_WORKER -->|"Extract POS Deltas"| FOREVER_POS
-    LAMBDA_WORKER -->|"Batch Upsert Catalog / Stock"| RDS_PG
+    CHECKOUT_ROUTE -->|"2. Create Voucher / 4. Settle Ledger"| HOME_POS_API
+    DOMAIN_SERVICES -->|"Direct Customer Auth & Address Management"| HOME_POS_API

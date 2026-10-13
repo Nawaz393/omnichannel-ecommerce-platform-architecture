@@ -74,7 +74,6 @@ sequenceDiagram
     participant AuthNet as Authorize.Net
     participant POS as In-House POS API
 
-    rect rgb(240, 245, 255)
     Note over User,RDS: Flow A: Server-Rendered Catalog Page (RSC)
     User->>RSC: GET /category/products
     RSC->>Accel: prisma.products.findMany({ where: { companyid } })
@@ -82,19 +81,15 @@ sequenceDiagram
     RDS-->>Accel: Product Records & Variants
     Accel-->>RSC: Hydrated Models
     RSC-->>User: Stream HTML + RSC Payload (Zero Client JS for markup)
-    end
 
-    rect rgb(245, 255, 245)
     Note over User,RDS: Flow B: Atomic Cart Mutation (Server Action)
     User->>SA: attachActiveCartToUser({ userId, companyId })
     SA->>Accel: prisma.$transaction(async (tx) => { ... })
-    Accel->>RDS: BEGIN; Merge anon cart; clamp stock; COMMIT;
+    Accel->>RDS: Transaction (BEGIN, Merge anon cart, clamp stock, COMMIT)
     RDS-->>Accel: Updated CartSummary
     Accel-->>SA: Serialized CartLineDTO[]
     SA-->>User: Return new cart state (Zustand updates)
-    end
 
-    rect rgb(255, 250, 240)
     Note over User,POS: Flow C: Checkout Saga Orchestration
     User->>API: POST /api/checkout (Nonce, Amount, Items)
     API->>Accel: revalidateCartTotal(userId)
@@ -109,7 +104,6 @@ sequenceDiagram
     API->>POS: PUT /Voucher/order/5001/payment
     POS-->>API: Ledger Settled
     API-->>User: 200 OK (Receipt & Order Confirmation)
-    end
 ```
 
 ---

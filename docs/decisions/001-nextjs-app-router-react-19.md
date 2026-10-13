@@ -4,7 +4,7 @@
 
 - **Status:** Accepted
 - **Date:** 2025-11-18
-- **Deciders:** Software Architecture Team, Lead Full-Stack Engineer (M Nawaz Khan)
+- **Deciders:** Lead Full-Stack Engineer (M Nawaz Khan)
 
 ---
 

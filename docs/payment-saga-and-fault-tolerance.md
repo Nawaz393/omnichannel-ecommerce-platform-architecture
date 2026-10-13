@@ -42,21 +42,16 @@ sequenceDiagram
     AcceptJs-->>Customer: Return Opaque Data Nonce (dataDescriptor, dataValue)
     Customer->>API: POST /api/checkout (Nonce, customerId, amount)
 
-    rect rgb(240, 248, 255)
     Note over API,Prisma: Step 1: Server-Side Cart & VAT Revalidation
     API->>Prisma: Query active cartitems & products
     Prisma-->>API: Return unit prices, quantities & VAT percentages
     API->>API: Recompute Total: Subtotal + Shipping ($15.99) + Total VAT
     API->>API: Enforce Anti-Tamper Check: |clientAmount - expectedAmount| <= 0.01
-    end
 
-    rect rgb(255, 250, 240)
     Note over API,AuthNet: Step 2: Payment Authorization Hold (No Capture)
     API->>AuthNet: AUTHONLYTRANSACTION(amount, opaqueData, lineItems)
     AuthNet-->>API: Auth Approved (transactionId: 101, authCode: ABC)
-    end
 
-    rect rgb(245, 255, 250)
     Note over API,POS: Step 3: Insert External POS Order Voucher
     API->>POS: POST /Voucher/order (orderPayload)
     alt POS Voucher Creation Fails
@@ -65,9 +60,7 @@ sequenceDiagram
     else POS Voucher Success
         POS-->>API: Order Created (voucherId: 5001)
     end
-    end
 
-    rect rgb(255, 245, 245)
     Note over API,AuthNet: Step 4: Prior Auth Capture
     API->>AuthNet: PRIORAUTHCAPTURETRANSACTION(transactionId: 101, amount)
     alt Capture Fails
@@ -77,9 +70,7 @@ sequenceDiagram
     else Capture Success
         AuthNet-->>API: Capture Confirmed (transactionId: 102)
     end
-    end
 
-    rect rgb(240, 255, 255)
     Note over API,POS: Step 5: Settle POS Payment Ledger
     API->>POS: PUT /Voucher/order/5001/payment (credit: total)
     alt Ledger Update Fails
@@ -89,7 +80,6 @@ sequenceDiagram
     else Ledger Update Success
         POS-->>API: 200 OK (Settled)
         API-->>Customer: 200 OK (Order 5001 Confirmed)
-    end
     end
 ```
 

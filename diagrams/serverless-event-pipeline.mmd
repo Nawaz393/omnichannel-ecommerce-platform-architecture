@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph TRIGGERS ["Event Triggers & Scheduling"]
+        CRON["EventBridge Schedule<br/>(Every 15 min delta / Midnight full)"]
+        S3_EVENT["S3 ObjectCreated Event<br/>(Catalog CSV/JSON Drop)"]
+        MANUAL["Admin Trigger / Webhook<br/>(Inventory Refresh API)"]
+    end
+
+    subgraph INGESTION ["Ingestion & Orchestration"]
+        SQS_FIFO["Amazon SQS FIFO Queue<br/>(catalog-sync.fifo)"]
+        DLQ["Amazon SQS Dead Letter Queue<br/>(catalog-sync-dlq)"]
+        LAMBDA["AWS Lambda Worker<br/>(engels_lambda / Node.js 20)"]
+    end
+
+    subgraph PROCESSING ["Worker Execution & Transforms"]
+        PARSE["Payload Validation & Delta Diffing"]
+        TRANSFORM["Schema Mapping & Media S3 URL Resolution"]
+        BATCH_CHUNK["Batch Chunking (100 items / batch)"]
+    end
+
+    subgraph PERSISTENCE ["Data Stores & Caches"]
+        RDS_PG[("AWS RDS PostgreSQL<br/>(products, variants, stock)")]
+        S3_ASSETS[("Amazon S3 Bucket<br/>(forever-pos-bucket)")]
+        ACCEL_CACHE["Prisma Accelerate Cache Invalidation"]
+    end
+
+    CRON --> SQS_FIFO
+    S3_EVENT --> SQS_FIFO
+    MANUAL --> SQS_FIFO
+
+    SQS_FIFO -->|Poll Batch| LAMBDA
+    LAMBDA -->|Failed 3x| DLQ
+
+    LAMBDA --> PARSE
+    PARSE --> TRANSFORM
+    TRANSFORM --> BATCH_CHUNK
+
+    BATCH_CHUNK -->|Upsert Bulk Records| RDS_PG
+    TRANSFORM -->|Upload Optimized Media| S3_ASSETS
+    RDS_PG -->|Trigger Invalidation Hook| ACCEL_CACHE

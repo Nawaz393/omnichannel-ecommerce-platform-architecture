@@ -1,0 +1,45 @@
+flowchart TB
+    subgraph CLIENT_TIER ["Client Tier (Browser)"]
+        BROWSER["Next.js React 19 UI<br/>(Tailwind CSS v4 & Radix UI)"]
+        ZUSTAND["Zustand Store<br/>(cart-v2 in LocalStorage)"]
+        ACCEPT_JS["Authorize.Net Accept.js<br/>(PCI-DSS SAQ-A Tokenizer)"]
+        GOOGLE_AUTH["Google Identity Services<br/>(GSI OAuth)"]
+    end
+
+    subgraph VERCEL_EDGE ["Vercel Serverless Edge Platform"]
+        APP_ROUTER["Next.js 16 App Router"]
+        SERVER_ACTIONS["Server Actions ('use server')<br/>(Cart Mutations & Popularity Aggregation)"]
+        CHECKOUT_ROUTE["Route Handler: /api/checkout<br/>(Distributed Saga Controller)"]
+    end
+
+    subgraph AWS_CLOUD ["AWS Cloud Infrastructure (eu-north-1 Stockholm)"]
+        PRISMA_ACCEL["Prisma Accelerate<br/>(Connection Pooling & Edge Caching)"]
+        RDS_PG[("AWS RDS PostgreSQL<br/>(foreverpos Relational Database)")]
+        S3_BUCKET[("Amazon S3 Bucket<br/>(forever-pos-bucket Media Assets)")]
+        LAMBDA_WORKER["AWS Lambda Microservice<br/>(engels_lambda Catalog Sync)"]
+        EVENTBRIDGE["Amazon EventBridge<br/>(Scheduled Sync Triggers)"]
+    end
+
+    subgraph EXTERNAL_SERVICES ["External Enterprise Gateways"]
+        AUTH_NET["Authorize.Net Gateway<br/>(Auth-Only, Capture, Void APIs)"]
+        FOREVER_POS["ForeverPOS API (SAK Retail)<br/>(/Voucher/order, /payment Ledger)"]
+    end
+
+    BROWSER -->|"Local Cart Operations"| ZUSTAND
+    BROWSER -->|"Direct Card Submission (PCI Isolated)"| ACCEPT_JS
+    ACCEPT_JS -->|"Opaque Payment Nonce"| BROWSER
+    BROWSER -->|"SSO Login"| GOOGLE_AUTH
+    BROWSER -->|"Invoke Server Actions"| SERVER_ACTIONS
+    BROWSER -->|"POST Nonce + Payload"| CHECKOUT_ROUTE
+
+    APP_ROUTER -->|"Serve Optimized Images"| S3_BUCKET
+    SERVER_ACTIONS -->|"ACID Cart Transactions"| PRISMA_ACCEL
+    CHECKOUT_ROUTE -->|"Cart & VAT Revalidation"| PRISMA_ACCEL
+    PRISMA_ACCEL -->|"Low-Latency TCP Connection Pool"| RDS_PG
+
+    CHECKOUT_ROUTE -->|"1. Auth-Only / 3. Capture / Comp Void"| AUTH_NET
+    CHECKOUT_ROUTE -->|"2. Create Voucher / 4. Settle Ledger"| FOREVER_POS
+
+    EVENTBRIDGE -->|"Scheduled Ingestion Trigger"| LAMBDA_WORKER
+    LAMBDA_WORKER -->|"Extract POS Deltas"| FOREVER_POS
+    LAMBDA_WORKER -->|"Batch Upsert Catalog / Stock"| RDS_PG

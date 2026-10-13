@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    actor Customer as B2B / Retail Customer
+    participant Client as React 19 Client UI
+    participant AcceptJS as Authorize.Net Accept.js
+    participant ServerAction as Next.js Server Action / API
+    participant Prisma as Prisma Accelerate + AWS RDS
+    participant AuthNet as Authorize.Net Gateway
+    participant ForeverPOS as ForeverPOS API (Back-Office)
+
+    Customer->>Client: Submit Card Details (PAN, CVV, Exp)
+    Client->>AcceptJS: dispatchData(secureData)
+    AcceptJS-->>Client: opaqueData (nonce: tokenValue)
+    Note over Client,AcceptJS: PCI-DSS Zero-Card-Data Exposure on Server
+
+    Client->>ServerAction: POST /api/checkout (opaqueData, cartItems, billing)
+    ServerAction->>Prisma: Begin Transaction: Validate & Lock Stock
+    Prisma-->>ServerAction: Current Stock Validated
+    ServerAction->>ServerAction: Calculate Order Total & VAT (Decimals)
+
+    ServerAction->>AuthNet: Phase 1: createTransactionRequest (AUTH_ONLY)
+    alt Gateway Declined / Network Failure
+        AuthNet-->>ServerAction: 400 Error (Declined / Error Code)
+        ServerAction->>Prisma: Rollback Local Transaction & Release Locks
+        ServerAction-->>Client: Payment Failed Error Message
+    else Authorization Approved (transId granted)
+        AuthNet-->>ServerAction: 200 OK: transId, authCode
+        ServerAction->>Prisma: Insert Order (status='pending_settlement', transId)
+        ServerAction->>Prisma: Insert OrderItems (Variant Snapshots)
+        ServerAction->>Prisma: Commit Local Order Transaction
+
+        ServerAction->>ForeverPOS: Sync Order to ERP (ForeverPOS)
+        alt ForeverPOS Sync Fails / Internal Error
+            ForeverPOS-->>ServerAction: Error 500 / Network Timeout
+            ServerAction->>AuthNet: Compensating Void: voidTransactionRequest(transId)
+            AuthNet-->>ServerAction: Void Acknowledged
+            ServerAction->>Prisma: Update Order status='voided_unrecoverable'
+            ServerAction-->>Client: Checkout Rollback Error
+        else ForeverPOS Sync Succeeds
+            ForeverPOS-->>ServerAction: 200 OK (voucherId generated)
+            ServerAction->>AuthNet: Phase 2: prioritizeCaptureRequest (PRIOR_AUTH_CAPTURE)
+            AuthNet-->>ServerAction: Capture Settled
+            ServerAction->>Prisma: Update Order status='completed'
+            ServerAction-->>Client: 200 OK (Redirect to /order/confirmed)
+        end
+    end

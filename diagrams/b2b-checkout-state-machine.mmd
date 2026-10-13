@@ -1,0 +1,52 @@
+stateDiagram-v2
+    [*] --> CartActive: Customer Adds Items
+
+    state "Cart & Quoting Stage" as CartStage {
+        CartActive --> GuestCart: Unauthenticated Cookie
+        GuestCart --> MergedCart: User Login / Session Merge
+        CartActive --> UserCart: Authenticated
+        MergedCart --> UserCart
+        UserCart --> CheckoutInitiated: Retail Checkout
+        UserCart --> QuotationRequested: Request B2B Quote
+    }
+
+    state "Retail 2-Phase Checkout" as RetailCheckout {
+        CheckoutInitiated --> ValidatingCart: Server Recomputation
+        ValidatingCart --> AuthHold: Authorize.Net Hold (AUTH_ONLY)
+        AuthHold --> POSVoucherCreated: POS /Voucher/order Success
+        AuthHold --> AuthVoided: POS Voucher Failed
+        AuthVoided --> [*]: Funds Released
+        POSVoucherCreated --> PaymentCaptured: PRIOR_AUTH_CAPTURE
+        POSVoucherCreated --> OrderRolledBack: Capture Declined
+        OrderRolledBack --> [*]: Voucher Deleted & Auth Voided
+        PaymentCaptured --> LedgerUpdated: POS /payment Settle
+        LedgerUpdated --> OrderConfirmed: Receipt Generated
+    }
+
+    state "B2B Quotation Lifecycle" as B2BQuote {
+        QuotationRequested --> QuoteDraft: Capture Line Items & Currency
+        QuoteDraft --> QuoteSubmitted: Submit to Commercial Desk
+        QuoteSubmitted --> UnderReview: Pricing & Discount Review
+        UnderReview --> QuoteApproved: Commercial Terms Accepted
+        UnderReview --> QuoteRejected: Price/Terms Declined
+        QuoteRejected --> [*]
+        QuoteApproved --> AwaitingAcceptance: Sent to Buyer
+        AwaitingAcceptance --> QuoteExpired: Expiry Date Reached
+        QuoteExpired --> [*]
+        AwaitingAcceptance --> QuoteAccepted: Buyer Confirms Order
+        QuoteAccepted --> InvoiceIssued: Convert to Sales Order
+        InvoiceIssued --> CreditSettlement: B2B Payment Term / Invoice Paid
+        CreditSettlement --> OrderConfirmed
+    }
+
+    state "Fulfillment & Post-Sale" as Fulfillment {
+        OrderConfirmed --> WarehouseAllocated: Inventory Decremented
+        WarehouseAllocated --> Shipped: Dispatch & Tracking
+        Shipped --> Delivered: Customer Received
+        Delivered --> Completed: Transaction Closed
+        Delivered --> ReturnInitiated: RMA / Return Requested
+        ReturnInitiated --> StockRestocked: Inspection Passed
+        StockRestocked --> RefundIssued: POS Credit Memo
+        RefundIssued --> [*]
+        Completed --> [*]
+    }

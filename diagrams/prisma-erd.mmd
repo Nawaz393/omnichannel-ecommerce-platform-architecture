@@ -1,0 +1,155 @@
+erDiagram
+    users ||--o{ customer : profiles
+    company ||--o{ stores : operates
+    company ||--o{ products : owns
+    company ||--o{ carts : scopes
+
+    productgroup ||--o{ productgroup : subcategories
+    productgroup ||--o{ products : categorizes
+    brand ||--o{ products : manufactures
+    products ||--o{ productvariants : provides
+    products ||--o{ cartitems : referenced_in
+    productvariants ||--o{ cartitems : specifies
+
+    customer ||--o{ customeraddress : has
+    customer ||--o{ carts : owns
+    customer ||--o{ sales : places
+    customer ||--o{ quote : requests
+    stores ||--o{ sales : fulfills
+    stores ||--o{ quote : issues
+
+    carts ||--o{ cartitems : contains
+    sales ||--o{ saledetail : contains
+    products ||--o{ saledetail : itemized
+    sales ||--o{ voucherpayment : settled_via
+    quote ||--o{ quotedetail : contains
+    products ||--o{ quotedetail : specified_in
+
+    users {
+        int userid PK
+        string email
+        string username
+        string role
+        int companyid FK
+        datetime createddate
+    }
+
+    customer {
+        int customerid PK
+        string customername
+        string email
+        string phonenumber
+        int companyid FK
+        int storeid FK
+    }
+
+    productgroup {
+        int groupid PK
+        string groupname
+        int parentgroupid FK
+        int companyid FK
+    }
+
+    brand {
+        int brandid PK
+        string brandname
+        int companyid FK
+    }
+
+    products {
+        int productid PK
+        string productname
+        decimal rate
+        int productgroupid FK
+        int brandid FK
+        int companyid FK
+        decimal vat
+        json images
+    }
+
+    productvariants {
+        int variantid PK
+        int productid FK
+        string sku
+        decimal price
+        decimal stockquantity
+    }
+
+    carts {
+        int cartid PK
+        int userid FK
+        string anonymousid
+        string status
+        int companyid FK
+        datetime createddate
+        datetime updateddate
+    }
+
+    cartitems {
+        int cartitemid PK
+        int cartid FK
+        int productid FK
+        int variantid FK
+        int quantity
+        decimal unitprice
+        decimal vat
+        string sku
+        string barcode
+    }
+
+    sales {
+        int saleid PK
+        int customerid FK
+        int storeid FK
+        decimal total
+        decimal vat
+        decimal grandtotal
+        string status
+        string paymenttype
+        datetime saledate
+    }
+
+    saledetail {
+        int saledetailid PK
+        int saleid FK
+        int productid FK
+        decimal quantity
+        decimal rate
+        decimal subtotal
+        decimal totalvat
+        decimal total
+    }
+
+    voucherpayment {
+        int voucherpaymentid PK
+        int voucherid FK
+        decimal cash
+        decimal credit
+        string cardtype
+        string transactionid
+        datetime paymentdate
+    }
+
+    quote {
+        int quoteid PK
+        int customerid FK
+        int userid FK
+        int storeid FK
+        decimal total
+        decimal vat
+        decimal grandtotal
+        string status
+        datetime quotedate
+        datetime expirydate
+    }
+
+    quotedetail {
+        int quotedetailid PK
+        int quoteid FK
+        int productid FK
+        decimal quantity
+        decimal rate
+        decimal subtotal
+        decimal totalvat
+        decimal total
+    }

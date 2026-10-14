@@ -1,4 +1,4 @@
-# Enterprise Omnichannel Retail E-Commerce Platform — Engineering Case Study
+# Enterprise Omnichannel Retail E-Commerce Platform Engineering Case Study
 
 A documentation-first architectural case study of an enterprise full-stack retail and B2B wholesale commerce platform bridging modern web storefront interactions with brick-and-mortar back-office ERP systems via direct in-house POS REST APIs and direct POS PostgreSQL persistence.
 
